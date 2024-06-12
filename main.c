@@ -44,15 +44,6 @@ void ENC_InterruptHandler(void) {
     else                encoderDelta++;
 }
 
-// Temperature ADC handler.
-void ADC_TemperatureCallback(void) {
-    int16_t converted = rawTemperatureToC(ADC0_GetConversionResult(), coldJunctionTemp);
-    if(converted < 0) converted = 0;
-    if(converted > 999) converted = 999;
-    currentTemperature = converted;
-}
-
-
 // Display handler.
 void startDisplay() {
     // Set CLK and DATA high.
@@ -216,15 +207,6 @@ int main(void) {
     // Quadrature interrupt handlers, responsible for the rotary encoder.
     ENC1_SetInterruptHandler(ENC_InterruptHandler);
     
-    // Set up the event system. There is a bug in MCC, this should be automatic!
-    // The event system is responsible for starting the temperature conversion
-    // every 100ms.
-    EVSYS.CHANNEL0 = EVSYS_GENERATOR_RTC_OVF_gc;
-    EVSYS.USERADC0 = EVSYS_CHANNEL_CHANNEL0_gc;
-    
-    // Temperature read ready callback.
-    ADC0_RegisterResrdyCallback(ADC_TemperatureCallback);
-    
     // Set PWM for the heater, turn heat OFF.
     TCA0_Write(0x800);
     TCA0_WaveformFreqRegCountSet(0);
@@ -301,6 +283,16 @@ int main(void) {
             encoderDelta = 0;
         }
         
+        // Get the current temperature.
+        TCA0_WaveformFreqRegCountSet(0);
+        ADC0_StartConversion(ADC_MUXPOS_AIN0_gc);
+        while(!ADC0_IsConversionDone());
+        int16_t converted = rawTemperatureToC(ADC0_GetConversionResult(), coldJunctionTemp);
+        if(converted < 0) converted = 0;
+        if(converted > 999) converted = 999;
+        currentTemperature = converted;
+        TCA0_WaveformFreqRegCountSet(pwmState);
+        
         // Display the current temperature if not overridden to the setpoint.
         if(displayWhat == 0xFFFF) {
             displayWhat = currentTemperature;
@@ -354,7 +346,7 @@ int main(void) {
         if(VIN_TEST_GetValue() == 0) {
             updateDisplay("    ");
             TCA0_WaveformFreqRegCountSet(0);
-            cpu_irq_disable();
+            RTC_DisablePITInterrupt();
             while(1);
         }
         
@@ -364,7 +356,7 @@ int main(void) {
             TCA0_WaveformFreqRegCountSet(0);
             
             // Deliberately freeze with an error.
-            cpu_irq_disable();
+            RTC_DisablePITInterrupt();
             brightness = 7;
             while(1) {
                 updateDisplay("hEAt");

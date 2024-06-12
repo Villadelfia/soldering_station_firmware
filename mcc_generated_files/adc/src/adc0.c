@@ -57,11 +57,11 @@ int8_t ADC0_Initialize(void)
     // DBGRUN disabled; 
     ADC0.DBGCTRL = 0x0;
 
-    // STARTEI enabled; 
-    ADC0.EVCTRL = 0x1;
+    // STARTEI disabled; 
+    ADC0.EVCTRL = 0x0;
 
-    // RESRDY enabled; WCMP disabled; 
-    ADC0.INTCTRL = 0x1;
+    // RESRDY disabled; WCMP disabled; 
+    ADC0.INTCTRL = 0x0;
 
     // MUXPOS ADC input pin 0; 
     ADC0.MUXPOS = 0x0;

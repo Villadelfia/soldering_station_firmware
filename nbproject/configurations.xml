@@ -10,9 +10,6 @@
         <logicalFolder name="adc" displayName="adc" projectFiles="true">
           <itemPath>mcc_generated_files/adc/adc0.h</itemPath>
         </logicalFolder>
-        <logicalFolder name="evsys" displayName="evsys" projectFiles="true">
-          <itemPath>mcc_generated_files/evsys/evsys.h</itemPath>
-        </logicalFolder>
         <logicalFolder name="nvm" displayName="nvm" projectFiles="true">
           <itemPath>mcc_generated_files/nvm/nvm.h</itemPath>
         </logicalFolder>
@@ -69,11 +66,6 @@
         <logicalFolder name="adc" displayName="adc" projectFiles="true">
           <logicalFolder name="src" displayName="src" projectFiles="true">
             <itemPath>mcc_generated_files/adc/src/adc0.c</itemPath>
-          </logicalFolder>
-        </logicalFolder>
-        <logicalFolder name="evsys" displayName="evsys" projectFiles="true">
-          <logicalFolder name="src" displayName="src" projectFiles="true">
-            <itemPath>mcc_generated_files/evsys/src/evsys.c</itemPath>
           </logicalFolder>
         </logicalFolder>
         <logicalFolder name="nvm" displayName="nvm" projectFiles="true">

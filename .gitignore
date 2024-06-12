@@ -1,0 +1,7 @@
+.generated_files/**
+dist/**
+*.log
+*.log.inx
+mcc_generated_files/**
+nbproject/**
+mcc-*

@@ -2,7 +2,7 @@
 
 manifest_file_version: 1.0.0
 project: soldering_station_firmware
-creation_date: 2024-04-04T06:20:01.068+02:00[Europe/Paris]
+creation_date: 2024-05-17T15:39:35.811+02:00[Europe/Paris]
 operating_system: Windows 10
 mcc_mode: IDE
 mcc_mode_version: v6.20
@@ -25,7 +25,6 @@ modules:
 - {name: '@mchp-mcc/pin-content-processor', type: MELODY, version: 3.8.0}
 - {name: '@mchp-mcc/scf-avr8-adc-v1', type: MELODY, version: 4.2.6}
 - {name: '@mchp-mcc/scf-avr8-clkctrl-v2', type: MELODY, version: 3.2.14}
-- {name: '@mchp-mcc/scf-avr8-evsys-v1', type: MELODY, version: 1.2.0}
 - {name: '@mchp-mcc/scf-avr8-interrupt-v1', type: MELODY, version: 5.0.12}
 - {name: '@mchp-mcc/scf-avr8-memory-v2', type: MELODY, version: 5.0.1}
 - {name: '@mchp-mcc/scf-avr8-rtc-v1', type: MELODY, version: 4.2.5}
