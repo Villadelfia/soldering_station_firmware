@@ -9,9 +9,11 @@ uint8_t brightness = 7;
 int32_t encoderDelta = 0;
 uint16_t coldJunctionTemp = 25;
 uint16_t currentTemperature = 0;
+uint16_t averageTemperature = 65535;
 uint16_t temperatureSetpoint = 0;
 uint8_t presetSetpointIndex = 1;
-uint16_t presetSetpoints[SETPOINT_CT] = {310, 330, 350, 370};
+uint16_t presetSetpoints[SETPOINT_CT] = {330, 350, 370, 400};
+uint16_t pwmState = 0;
 const uint8_t ascii[128] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -32,16 +34,116 @@ const uint8_t ascii[128] = {
 };
 char buffer[4] = {0, 0, 0, 0};
 
-// Periodic timer to make the display "breathe."
+double Kp = 9.5; // Base = 300
+double Ki = 0.4;
+double Kd = 0.8;
+
+double outMax = 2048.0;
+double outMin = 0.0;
+
+double integralSum = 0.0;
+double prevErr = 0.0;
+double dT = 0.01;
+
+uint16_t stablePwm = 0;
+int8_t tempDirection = 0;
+uint16_t timeTicks = 0;
+
+double doPID(double actual, double expected) {
+    // Calculate error.
+    double error = expected - actual;
+    
+    // P
+    double oP = (Kp * (expected/300.0)) * error;
+    
+    // I
+    integralSum = error * dT;
+    double oI = integralSum * Ki;
+    
+    // D
+    double oD = Kd * ((error - prevErr) / dT);
+    
+    // Save previous error.
+    prevErr = error;
+    
+    double output = oP+oI+oD;
+    if(output < outMin) output = outMin;
+    if(output > outMax) output = outMax;
+    
+    return output;
+}
+
 void RTC_PITHandler(void) {
+    // Periodic timer to make the display "breathe."
     brightness += direction;
-    if(brightness == 1 || brightness == 7) direction = -direction;
+    if(brightness == 2 || brightness == 7) direction = -direction;
+    
+    // Get the current temperature.
+    TCA0_WaveformFreqRegCountSet(0);
+    DELAY_milliseconds(7);
+    ADC0_StartConversion(ADC_MUXPOS_AIN0_gc);
+    while(!ADC0_IsConversionDone());
+    int16_t converted = rawTemperatureToC(ADC0_GetConversionResult(), coldJunctionTemp);
+    if(converted < 0) converted = 0;
+    if(converted > 999) converted = 999;
+    uint16_t working = converted;
+    TCA0_WaveformFreqRegCountSet(pwmState);
+    
+    if(working == 999) {
+        // Overheat or no tip.
+        averageTemperature = 65535;
+        currentTemperature = 999;
+    } else {
+        // Weighted Average of Temp.
+        if(averageTemperature == 65535) {
+            averageTemperature = working << 4;
+            currentTemperature = working;
+        } else {
+            averageTemperature = working + averageTemperature - ((averageTemperature - 8) >> 4);
+            currentTemperature = averageTemperature >> 4;
+        }
+    }
+    
+    // Set the PWM.
+    if(temperatureSetpoint == 0 || currentTemperature == 999) {
+        pwmState = 0;
+    } else {
+        int16_t error = (int16_t)temperatureSetpoint - (int16_t)currentTemperature;
+        if(error > 10 || error < -10) {
+            pwmState = (uint16_t)doPID(currentTemperature, temperatureSetpoint);
+            tempDirection = error > 0 ? 1 : -1;
+        } else {
+            // Save the pwm that got us to the right value.
+            if(currentTemperature == temperatureSetpoint) {
+                if(tempDirection == 1) stablePwm = pwmState;
+                tempDirection = 0;
+            }
+            
+            // If we're too high, cut the heat.
+            if(currentTemperature > temperatureSetpoint) {
+                pwmState = 5;
+                tempDirection = -1;
+            }
+            
+            // If we're too low, crank up the heat.
+            if(currentTemperature < temperatureSetpoint) {
+                if(tempDirection != 1) {
+                    tempDirection = 1;
+                    pwmState = stablePwm;
+                } else {
+                    pwmState += 1;
+                }
+            }
+        }
+    }
+    
+    TCA0_WaveformFreqRegCountSet(pwmState);
 }
 
 // Quadrature encoder handler.
 void ENC_InterruptHandler(void) {
-    if(ENC2_GetValue()) encoderDelta--;
-    else                encoderDelta++;
+    if(ENC2_GetValue()) encoderDelta -= 5;
+    else                encoderDelta += 5;
 }
 
 // Display handler.
@@ -171,10 +273,6 @@ uint16_t loadTemp() {
     return t;
 }
 
-// PWM state.
-uint16_t pwmState = 0;
-
-
 // State for the button.
 uint8_t ENCB_LastState = 0;
 
@@ -202,7 +300,7 @@ int main(void) {
     // Load the setpoint from EEPROM. If this is a first boot, it will be 0xFFFF
     // in which case we reset it to 310.
     temperatureSetpoint = loadTemp();
-    if(temperatureSetpoint == 0xFFFF) temperatureSetpoint = 310;
+    if(temperatureSetpoint == 0xFFFF) temperatureSetpoint = 330;
     
     // Quadrature interrupt handlers, responsible for the rotary encoder.
     ENC1_SetInterruptHandler(ENC_InterruptHandler);
@@ -283,63 +381,19 @@ int main(void) {
             encoderDelta = 0;
         }
         
-        // Get the current temperature.
-        TCA0_WaveformFreqRegCountSet(0);
-        ADC0_StartConversion(ADC_MUXPOS_AIN0_gc);
-        while(!ADC0_IsConversionDone());
-        int16_t converted = rawTemperatureToC(ADC0_GetConversionResult(), coldJunctionTemp);
-        if(converted < 0) converted = 0;
-        if(converted > 999) converted = 999;
-        currentTemperature = converted;
-        TCA0_WaveformFreqRegCountSet(pwmState);
-        
         // Display the current temperature if not overridden to the setpoint.
         if(displayWhat == 0xFFFF) {
-            displayWhat = currentTemperature;
+            int32_t diff = (int32_t)temperatureSetpoint - (int32_t)currentTemperature;
+            if(diff < 0) diff = -diff;
+            if(diff <= 5) displayWhat = temperatureSetpoint;
+            else          displayWhat = currentTemperature;
         }
         
         // Drive the display once every DISP_UPDATE_CT cycles.
         displayUpdate++;
         displayUpdate %= DISP_UPDATE_CT;
         if(displayUpdate == 0) {
-            setDisplay(displayWhat);
-        }
-        
-        // Update the PWM.
-        if(temperatureSetpoint == 0) {
-            pwmState = 0;
-            TCA0_WaveformFreqRegCountSet(pwmState);
-        } else {
-            int32_t currentPWM = pwmState;
-            if(temperatureSetpoint > currentTemperature) {
-                // We're too cold!
-                int32_t diff = (int32_t)temperatureSetpoint - (int32_t)currentTemperature;
-                if(diff < 3) currentPWM += 5;
-                else currentPWM = diff  * (int32_t)temperatureSetpoint / 6;
-                if(currentPWM > 0x200) currentPWM = 0x200;
-                pwmState = (uint16_t)currentPWM;
-                TCA0_WaveformFreqRegCountSet(pwmState);
-            } else if(temperatureSetpoint < currentTemperature) {
-                // We're too hot!
-                int32_t diff = (int32_t)currentTemperature - (int32_t)temperatureSetpoint;
-                if(diff > 2) {
-                    currentPWM = 0;
-                } else {
-                    if(currentPWM > 0) {
-                        if((currentPWM/7) > 0) {
-                            currentPWM -= currentPWM/7;
-                            if((currentPWM/7) > 3) {
-                                currentPWM--;
-                            }
-                        } else {
-                            currentPWM--;
-                        }
-                    }
-                }
-                if(currentPWM < 0) currentPWM = 0;
-                pwmState = (uint16_t)currentPWM;
-                TCA0_WaveformFreqRegCountSet(pwmState);
-            }
+            if(currentTemperature != 999) setDisplay(displayWhat);
         }
         
         // Shut down when VIN goes low, which will happen a bit before 5V goes low.
@@ -347,27 +401,13 @@ int main(void) {
             updateDisplay("    ");
             TCA0_WaveformFreqRegCountSet(0);
             RTC_DisablePITInterrupt();
-            while(1);
+            while(1) TCA0_WaveformFreqRegCountSet(0);
         }
         
         // Failsafe in case of extreme temp.
-        if(currentTemperature > 600) {
-            // Turn off the heat.
+        if(currentTemperature >= 999) {
+            updateDisplay("TIP?");
             TCA0_WaveformFreqRegCountSet(0);
-            
-            // Deliberately freeze with an error.
-            RTC_DisablePITInterrupt();
-            brightness = 7;
-            while(1) {
-                updateDisplay("hEAt");
-                DELAY_milliseconds(1000);
-                updateDisplay("    ");
-                DELAY_milliseconds(200);
-                updateDisplay("FAIL");
-                DELAY_milliseconds(1000);
-                updateDisplay("    ");
-                DELAY_milliseconds(200);
-            }
         }
     }
 }

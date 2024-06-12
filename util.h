@@ -68,7 +68,7 @@ float tempLUT[] = {
 
 // Converts an ADC result of a K-type thermocouple to celsius.
 int16_t rawTemperatureToC(uint16_t raw, uint16_t coldJunctionTemp) {
-    float mv = mapRange((float)raw, 0, 1023, 0.0, 5000.0);
+    float mv = mapRange((float)raw, 0, 1023, 0.0, 5800.0);
     
     // We're outside of the useful range. Error.
     if(mv >= 4000) return 999;
